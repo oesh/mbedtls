@@ -158,6 +158,9 @@ OBJS_TLS= \
 	  ssl_srv.o \
 	  ssl_ticket.o \
 	  ssl_tls.o \
+	  mps/reader.o \
+	  mps/writer.o \
+	  mps/trace.o  \
 	  # This line is intentionally left blank
 
 .SILENT:
@@ -257,6 +260,7 @@ libmbedcrypto.dll: $(OBJS_CRYPTO)
 
 .c.o:
 	echo "  CC    $<"
+<<<<<<< 577c57484268d1b93dfc4bfb27521f846d9c2e2c
 	$(CC) $(LOCAL_CFLAGS) $(CFLAGS) -o $@ -c $<
 
 clean:
@@ -267,4 +271,13 @@ else
 	if exist *.o del /Q /F *.o
 	if exist libmbed* del /Q /F libmbed*
 	del /Q /F del_errors_out_if_the_file_list_is_empty_but_not_if_a_file_does_not_exist $(subst /,\,$(THIRDPARTY_CRYPTO_OBJECTS))
+=======
+	$(CC) $(LOCAL_CFLAGS) $(CFLAGS) -c $< -o $@
+
+clean:
+ifndef WINDOWS
+	rm -f $(OBJS_X509) $(OBJS_CRYPTO) $(OBJS_TLS) libmbed*
+else
+	del /Q /F $(OBJS_X509) $(OBJS_CRYPTO) $(OBJS_TLS) libmbed*
+>>>>>>> Add reader, writer and trace modules to Makefile
 endif
