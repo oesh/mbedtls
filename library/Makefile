@@ -96,7 +96,9 @@ OBJS_TLS=	debug.o		net_sockets.o		\
 		ssl_srv.o	ssl_ticket.o		\
 		ssl_tls.o                               \
                 mps/reader.o    mps/writer.o            \
-		mps/trace.o
+		mps/trace.o	mps/layer1.o		\
+		mps/layer2.o	mps/layer3.o		\
+		mps/mps.o	mps/allocator.o
 
 .SILENT:
 
