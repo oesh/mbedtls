@@ -60,7 +60,6 @@ to align with the CRYPTO frame boundaries.
 
 The TLS stack informs the QUIC transport when a handshake message is available.
 
-
 ```
    +-----------+                              
    |    App    |                              
@@ -111,9 +110,46 @@ TODO 4.1.2. Providing the client transport parameters.
 
 4.2. Passing the handshake data from the QUIC transport to the TLS stack.
 
-`mbedTLS` exposes `mbedtls_quic_input_provide_data` method that allows the QUIC
-transport to send the handshake data. The reassembly of the handshake data is
-the responsibility of the QUIC transport. The segementation of the QUIC data is the responsibility of `mbedTLS`.
+
+```
+    +-------------------+                  +-------------------+      
+    |       QUIC        |                  |      MPS L2       |      
+    |     transport     |                  |                   |      
+    +-------------------+                  +-------------------+      
+              |                                      |                
+              |                                      |                
+     mbedtls_quic_provide_data      l2_in_fetch_protected_record_quic 
+              |                                      |                
+              | +---------------------------+        |                
+              +>|    QUIC input subsytem    |<-------+                
+                +---------------------------+                         
+                              ^                                       
+                              v                                       
+            +-----------------------------------+                     
+            |          TLS record data          |                     
+            +-----------------------------------+
+```
+
+Fig 3. - outline of the data flow
+
+
+1. When the QUIC transport receives CRYPTO data, it passes the contents to
+   `mbedTLS` by invoking `mbedtls_quic_provide_data`. The incoming data 
+   is appended to an internal input queue that corresponds to the current epoch.
+
+2. When the TLS state machine is wishing to consume the handshake data,
+   it invokes the `l2_in_fetch_protected_record_quic` routine, which in turn
+   attempts to consume a handshake message from the QUIC input subsystem, 
+   by invoking `mbedtls_quic_consume_data`. 
+
+Notes:
+1. The UDP datagrams that carry the QUIC packets do not have a guaranteed
+   order of arrival. Reassembling the datagrams into a contigous stream of data
+   is the responsibility of the QUIC transport.
+2. The boundaries of the TLS handshake messages may not be aligned with the 
+   boundaries of the QUIC packets, except for the Initial packets. 
+   The segmentation of the QUIC packets into disjoint TLS handshake messages is
+   the responsibility of the `mbedTLS` integration layer.
 
 
 4.2.1. Open questions:
