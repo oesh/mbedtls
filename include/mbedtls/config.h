@@ -1090,6 +1090,23 @@
 #define MBEDTLS_SSL_MAX_FRAGMENT_LENGTH
 
 /**
+ * \def MBEDTLS_SSL_HS_FRAG
+ *
+ * Enable support for handshake message fragmentation.
+ *
+ * Comment this macro to disable support for handshake fragmentation.
+ */
+#define MBEDTLS_SSL_HS_FRAG
+
+/**
+ * \def MBEDTLS_SSL_MAX_HS_MSG_LENGTH
+ *
+ * Maximal length of a single handshake message. 
+ * Requires: MBEDTLS_SSL_HS_FRAG
+ */
+#define MBEDTLS_SSL_MAX_HS_MSG_LENGTH 65536
+
+/**
  * \def MBEDTLS_SSL_PROTO_SSL3
  *
  * Enable support for SSL 3.0.

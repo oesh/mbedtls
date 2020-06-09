@@ -563,6 +563,11 @@
 #error "MBEDTLS_SSL_SERVER_NAME_INDICATION defined, but not all prerequisites"
 #endif
 
+
+#if defined(MBEDTLS_SSL_MAX_HS_MSG_LENGTH) && ( !defined(MBEDTLS_SSL_HS_FRAG) )
+#error "MBEDTLS_SSL_MAX_HS_MSG_LENGTH defined, but not all prerequisites"
+#endif
+
 #if defined(MBEDTLS_THREADING_PTHREAD)
 #if !defined(MBEDTLS_THREADING_C) || defined(MBEDTLS_THREADING_IMPL)
 #error "MBEDTLS_THREADING_PTHREAD defined, but not all prerequisites"
