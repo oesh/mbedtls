@@ -205,8 +205,18 @@
 #endif
 
 /*
- * Maxium fragment length in bytes,
- * determines the size of each of the two internal I/O buffers.
+ * Maximal size of each of the two internal I/O buffers.
+ *
+ * If you enable TLS handshake fragmentation via MBEDTLS_SSL_HS_FRAG,
+ * you can set this buffer for a larger value, to accomodate handshake
+ * messages that exceed the maximal fragment size.
+ */
+#if !defined(MBEDTLS_SSL_MAX_CONTENT_LEN)
+#define MBEDTLS_SSL_MAX_CONTENT_LEN         16384   /**< Size of the input / output buffer */
+#endif
+
+/*
+ * Maxium fragment length in bytes, determines the largest possible fragment.
  *
  * Note: the RFC defines the default size of SSL / TLS messages. If you
  * change the value here, other clients / servers may not be able to
@@ -215,8 +225,11 @@
  * if you're using the Max Fragment Length extension and you know all your
  * peers are using it too!
  */
-#if !defined(MBEDTLS_SSL_MAX_CONTENT_LEN)
-#define MBEDTLS_SSL_MAX_CONTENT_LEN         16384   /**< Size of the input / output buffer */
+#if !defined(MBEDTLS_SSL_MAX_FRAG_LEN)
+#if MBEDTLS_SSL_MAX_CONTENT_LEN < 16384 /**< Max fragment len defined by the RFC */
+#define MBEDTLS_SSL_MAX_FRAG_LEN MBEDTLS_SSL_MAX_FRAG_LEN
+#else
+#define MBEDTLS_SSL_MAX_FRAG_LEN 16384
 #endif
 
 /* \} name SECTION: Module settings */

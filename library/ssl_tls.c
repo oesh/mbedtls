@@ -3070,6 +3070,120 @@ static int ssl_reassemble_dtls_handshake( mbedtls_ssl_context *ssl )
 }
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
 
+#if defined(MBEDTLS_SSL_HS_FRAG)
+/*
+ * Reassemble fragmented TLS handshake messages.
+ *
+ * TLS handshake messages can become fragmented whenever the length
+ * of the handshake messages exceeds the maximal allowed fragment length,
+ * which is configured via MBEDTLS_SSL_MAX_CONTENT_LEN.
+ *
+ * In such situation, the TLS handshake message will be carried in multiple
+ * TLS records. The first record will contain the handshake header, and the
+ * subsequent records will contain the continuation of the handshake message.
+ *
+ * Use a temporary buffer for reassembly.
+ * - the first holds the reassembled message (including handshake header),
+ *
+ */
+static int ssl_reassemble_tls_handshake( mbedtls_ssl_context *ssl )
+{
+    unsigned char *rmsg, *wmsg; /* Read and write pointers for the fragment */
+    size_t frag_len, frag_off; /* Length and offset of the current offset */
+    size_t msg_len = ssl->in_hslen - 4; /* Without headers */
+
+    if( ssl->handshake == NULL )
+    {
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "not supported outside handshake (for now)" ) );
+        return( MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE );
+    }
+
+    /*
+     * For first fragment, check size and allocate buffer
+     */
+    if( ssl->handshake->hs_msg == NULL )
+    {
+        size_t alloc_len = ssl->in_hslen;
+
+        MBEDTLS_SSL_DEBUG_MSG( 2, ( "initialize reassembly, total length = %d",
+                            msg_len ) );
+
+        if( ssl->in_hslen > MBEDTLS_SSL_MAX_CONTENT_LEN )
+        {
+            MBEDTLS_SSL_DEBUG_MSG( 1, ( "handshake message too large" ) );
+            return( MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE );
+        }
+
+        ssl->handshake->hs_msg = mbedtls_calloc( 1, alloc_len );
+        if( ssl->handshake->hs_msg == NULL )
+        {
+            MBEDTLS_SSL_DEBUG_MSG( 1, ( "alloc failed (%d bytes)", alloc_len ) );
+            return( MBEDTLS_ERR_SSL_ALLOC_FAILED );
+        }
+
+        /* Prepare final header: copy msg_type and length */
+        memcpy( ssl->handshake->hs_msg, ssl->in_msg, 4 );
+
+        /* Mark the writing location in the handshake message (excluding the header) */
+        ssl->handshake->hs_frag_off = 0;
+
+        /* Set the read pointer to the beginning of the handshake message */
+        rmsg = ssl->in_msg + 4;
+    } else {
+        rmsg = ssl->in_msg;
+    }
+
+
+    /* Determine the amount of bytes to copy */
+    frag_len = ssl->handshake->in_hslen - ssl->handshake->hs_frag_off;
+    if( ssl->in_msglen < msg_len ) {
+      msg_len = ssl->in_msglen;
+    }
+
+    wmsg = ssl->handshake->hs_msg + 4 + ssl->handshake->hs_frag_off;
+
+    MBEDTLS_SSL_DEBUG_MSG( 2, ( "adding fragment, offset = %d, length = %d",
+                        ssl->handshake->hs_frag_off, msg_len ) );
+
+    memcpy( wmsg, rmsg, frag_len );
+
+    ssl->handshake->hs_frag_off += frag_len;
+
+    /*
+     * Do we have the complete message by now?
+     * If yes, finalize it, else ask to read the next record.
+     */
+    if( ssl->handshake->hs_frag_off < ssl->in_hslen )
+    {
+        MBEDTLS_SSL_DEBUG_MSG( 2, ( "message is not complete yet" ) );
+        return( MBEDTLS_ERR_SSL_WANT_READ );
+    }
+
+    MBEDTLS_SSL_DEBUG_MSG( 2, ( "handshake message completed" ) );
+
+    if( frag_len < ssl->in_msglen )
+    {
+        /*
+         * We'got more handshake messages in the same record.
+         * This case is not handled now because no know implementation does
+         * that and it's hard to test, so we prefer to fail cleanly for now.
+         */
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "last fragment not alone in its record" ) );
+        return( MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE );
+    }
+
+    memcpy( ssl->in_msg, ssl->handshake->hs_msg, ssl->in_hslen );
+
+    mbedtls_free( ssl->handshake->hs_msg );
+    ssl->handshake->hs_msg = NULL;
+
+    MBEDTLS_SSL_DEBUG_BUF( 3, "reassembled handshake message",
+                   ssl->in_msg, ssl->in_hslen );
+
+    return( 0 );
+}
+#endif /* MBEDTLS_SSL_HS_FRAG */
+
 int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
 {
     if( ssl->in_msglen < mbedtls_ssl_hs_hdr_len( ssl ) )
@@ -3145,11 +3259,23 @@ int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
     }
     else
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
-    /* With TLS we don't handle fragmentation (for now) */
+
+    /* Check for fragmented handshake messages */
     if( ssl->in_msglen < ssl->in_hslen )
     {
+#if !defined(MBEDTLS_SSL_HS_FRAG)
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "TLS handshake fragmentation not supported" ) );
         return( MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE );
+#else
+        MBEDTLS_SSL_DEBUG_MSG( 2, ( "found fragmented TLS handshake message" ) );
+
+        if( ( ret = ssl_reassemble_tls_handshake( ssl ) ) != 0 )
+        {
+          MBEDTLS_SSL_DEBUG_RET( 1, "ssl_reassemble_dtls_handshake", ret );
+          return( ret );
+        }
+#endif /* MBEDLTS_SSL_HS_FRAG */
+
     }
 
     return( 0 );
@@ -3529,8 +3655,14 @@ static int ssl_parse_record_header( mbedtls_ssl_context *ssl )
     /* Check length against bounds of the current transform and version */
     if( ssl->transform_in == NULL )
     {
+        size_t max_msg_len = MBEDTLS_SSL_MAX_FRAG_LEN;
+#if defined(MBEDTLS_SSL_HS_FRAG)
+        if( ssl->in_msgtype == MBEDTLS_SSL_MSG_HANDSHAKE ) {
+          max_msg_len = MBEDTLS_SSL_MAX_CONTENT_LEN;
+        }
+#endif /* MBEDTLS_SSL_HS_FRAG */
         if( ssl->in_msglen < 1 ||
-            ssl->in_msglen > MBEDTLS_SSL_MAX_CONTENT_LEN )
+            ssl->in_msglen > max_msg_len )
         {
             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad message length" ) );
             return( MBEDTLS_ERR_SSL_INVALID_RECORD );
