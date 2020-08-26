@@ -138,12 +138,21 @@
 #define MBEDTLS_SSL_PADDING_ADD              0
 #endif
 
-#define MBEDTLS_SSL_BUFFER_LEN  ( MBEDTLS_SSL_MAX_CONTENT_LEN               \
+#define MBEDTLS_SSL_BUFFER_OVERHEAD(LEN)  ( (LEN)                   \
                         + MBEDTLS_SSL_COMPRESSION_ADD               \
-                        + 29 /* counter + header + IV */    \
+                        + 29 /* counter + header + IV */            \
                         + MBEDTLS_SSL_MAC_ADD                       \
                         + MBEDTLS_SSL_PADDING_ADD                   \
                         )
+
+
+#define MBEDTLS_SSL_EGRESS_BUFFER_LEN  MBEDTLS_SSL_BUFFER_OVERHEAD(MBEDTLS_SSL_MAX_CONTENT_LEN)
+
+#if defined(MBEDTLS_SSL_HS_REASSEMBLY)
+#define MBEDTLS_SSL_INGRESS_BUFFER_LEN  MBEDTLS_SSL_BUFFER_OVERHEAD(MBEDTLS_SSL_HS_MAX_LEN)
+#else
+#define MBEDTLS_SSL_INGRESS_BUFFER_LEN  MBEDTLS_SSL_BUFFER_OVERHEAD(MBEDTLS_SSL_MAX_CONTENT_LEN)
+#endif
 
 /*
  * TLS extension flags (for extensions with outgoing ServerHello content

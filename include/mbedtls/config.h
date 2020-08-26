@@ -1090,21 +1090,28 @@
 #define MBEDTLS_SSL_MAX_FRAGMENT_LENGTH
 
 /**
- * \def MBEDTLS_SSL_HS_FRAG
+ * \def MBEDTLS_SSL_HS_REASSEMBLY
  *
- * Enable support for handshake message fragmentation.
+ * Enable support for reassembling fragmented handshake messages
  *
  * Comment this macro to disable support for handshake fragmentation.
  */
-#define MBEDTLS_SSL_HS_FRAG
+#define MBEDTLS_SSL_HS_REASSEMBLY
 
 /**
- * \def MBEDTLS_SSL_MAX_HS_MSG_LENGTH
+ * \def MBEDTLS_SSL_HS_MAX_LEN
  *
  * Maximal length of a single handshake message. 
- * Requires: MBEDTLS_SSL_HS_FRAG
+ * Unless MBEDTLS_SSL_HS_REASSEMBLY is defined, this value 
+ * can not exceed MBEDTLS_SSL_MAX_CONTENT_LEN
+ *
+ * Note: increasing this value does not affect the
+ * maximal size of individual fragments, which are
+ * still subject to MBEDTLS_SSL_MAX_CONTENT_LEN
+ *
+ * Requires: MBEDTLS_SSL_HS_REASSEMBLY
  */
-#define MBEDTLS_SSL_MAX_HS_MSG_LENGTH 65536
+#define MBEDTLS_SSL_HS_MAX_LEN 65536
 
 /**
  * \def MBEDTLS_SSL_PROTO_SSL3
