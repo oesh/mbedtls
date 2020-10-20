@@ -300,7 +300,7 @@ typedef uint8_t mbedtls_mps_epoch_offset_t;
  *  the compiler to use the most natural choice of type for the
  *  target platform appears to lead to slightly smaller code.
  */
-//#define MBEDTLS_MPS_INTERNAL_SMALL_TYPES
+#define MBEDTLS_MPS_INTERNAL_SMALL_TYPES
 
 /*! This determines whether structure fields always use the
  *  smallest possible type to hold the possible values.
@@ -476,8 +476,8 @@ typedef uint_fast8_t mbedtls_mps_hs_seq_nr_t;
 typedef uint16_t mbedtls_mps_stored_size_t;
 typedef int16_t mbedtls_mps_stored_opt_size_t;
 #else
-typedef unsigned mbedtls_mps_stored_size_t;
-typedef int mbedtls_mps_stored_opt_size_t;
+typedef size_t mbedtls_mps_stored_size_t;
+typedef ssize_t mbedtls_mps_stored_opt_size_t;
 #endif /* MBEDTLS_MPS_STORED_SMALL_TYPES */
 
 #define MBEDTLS_MPS_SIZE_MAX ( (mbedtls_mps_stored_size_t) -1 )
@@ -497,7 +497,7 @@ typedef int mbedtls_mps_stored_opt_size_t;
  *        so almost 10%.
  */
 #if defined(MBEDTLS_MPS_INTERNAL_SMALL_TYPES)
-typedef mbedtls_mps_stored_opt_size_t mbedtls_mps_size_t;
+typedef mbedtls_mps_stored_size_t mbedtls_mps_size_t;
 #else
 typedef uint_fast16_t mbedtls_mps_size_t;
 #endif /* MBEDTLS_MPS_INTERNAL_SMALL_TYPES */

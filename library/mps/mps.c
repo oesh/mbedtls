@@ -3749,7 +3749,7 @@ MBEDTLS_MPS_STATIC int mps_dtls_frag_out_bind( mbedtls_mps *mps )
 MBEDTLS_MPS_STATIC int mps_dtls_frag_out_close( mbedtls_mps *mps )
 {
     int ret;
-    size_t frag_len, bytes_queued, remaining;
+    mbedtls_mps_size_t frag_len, bytes_queued, remaining;
     mbedtls_mps_handshake_out_internal * const hs = &mps->dtls.io.out.hs;
     mbedtls_mps_msg_metadata * const metadata = hs->metadata;
     TRACE_INIT( "mps_dtls_frag_out_close" );
@@ -3759,10 +3759,10 @@ MBEDTLS_MPS_STATIC int mps_dtls_frag_out_close( mbedtls_mps *mps )
      * is potentially still pending. */
     MPS_CHK( mbedtls_writer_reclaim( &hs->wr, &frag_len, &bytes_queued,
                                      MBEDTLS_WRITER_RECLAIM_FORCE ) );
-    TRACE( trace_comment, "* Fragment length: %u", (unsigned) frag_len );
-    TRACE( trace_comment, "* Bytes queued:    %u", (unsigned) bytes_queued );
-    TRACE( trace_comment, "* Total length:    %u", (unsigned) metadata->len );
-    TRACE( trace_comment, "* Fragment offset: %u", (unsigned) hs->offset );
+    TRACE( trace_comment, "* Fragment length: %lu", (unsigned long) frag_len );
+    TRACE( trace_comment, "* Bytes queued:    %lu", (unsigned long) bytes_queued );
+    TRACE( trace_comment, "* Total length:    %lu", (unsigned long) metadata->len );
+    TRACE( trace_comment, "* Fragment offset: %lu", (unsigned long) hs->offset );
 
     if( hs->wr_ext_l3 != NULL )
     {
@@ -3788,7 +3788,7 @@ MBEDTLS_MPS_STATIC int mps_dtls_frag_out_close( mbedtls_mps *mps )
          * the entire message. */
         MBEDTLS_MPS_ASSERT( frag_len == 0, "Invalid fragment length" );
         MBEDTLS_MPS_ASSERT( metadata->len == MBEDTLS_MPS_SIZE_UNKNOWN ||
-                            (unsigned) metadata->len == bytes_queued,
+                            metadata->len == bytes_queued,
               "Mismatch between HS msg size and amount of data written" );
 
         TRACE( trace_comment, "Total HS len: %u", (unsigned) bytes_queued );
@@ -3926,7 +3926,7 @@ MBEDTLS_MPS_STATIC int mps_out_flight_msg_done( mbedtls_mps *mps )
     /* Increase handshake sequence number except for the CCS message. */
     if( hdl->handle_type != MBEDTLS_MPS_RETRANSMISSION_HANDLE_CCS )
     {
-        uint8_t cur_seq_nr;
+        mbedtls_mps_stored_hs_seq_nr_t cur_seq_nr;
         cur_seq_nr = mps->dtls.seq_nr;
         if( cur_seq_nr == MBEDTLS_MPS_LIMIT_SEQUENCE_NUMBER )
         {
