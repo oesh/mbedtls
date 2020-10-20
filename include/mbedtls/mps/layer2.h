@@ -1175,6 +1175,22 @@ MBEDTLS_MPS_PUBLIC int mps_l2_init( mbedtls_mps_l2 *ctx, mps_l1 *l1, uint8_t mod
 @*/
 MBEDTLS_MPS_PUBLIC int mps_l2_free( mbedtls_mps_l2 *ctx );
 
+typedef uint8_t mbedtls_mps_record_split_config_t;
+#define MBEDTLS_MPS_SPLIT_DISABLED ( (mbedtls_mps_record_split_config_t) 0 )
+#define MBEDTLS_MPS_SPLIT_ENABLED  ( (mbedtls_mps_record_split_config_t) 1 )
+
+typedef uint8_t mbedtls_mps_record_pack_config_t;
+#define MBEDTLS_MPS_PACK_DISABLED  ( (mbedtls_mps_record_pack_config_t) 0 )
+#define MBEDTLS_MPS_PACK_ENABLED   ( (mbedtls_mps_record_pack_config_t) 1 )
+
+typedef uint8_t mbedtls_mps_record_empty_config_t;
+#define MBEDTLS_MPS_EMPTY_FORBIDDEN ( (mbedtls_mps_record_empty_config_t) 0 )
+#define MBEDTLS_MPS_EMPTY_ALLOWED   ( (mbedtls_mps_record_empty_config_t) 1 )
+
+/*@
+  MPS_L2_INV_REQUIRES( ctx )
+  MPS_L2_INV_ENSURES( ctx )
+@*/
 /**
  * \brief          Configure Layer 2 context to accept records
  *                 of a given record content type.
@@ -1184,7 +1200,7 @@ MBEDTLS_MPS_PUBLIC int mps_l2_free( mbedtls_mps_l2 *ctx );
  *
  * \param ctx      The address of the Layer 2 context to use.
  * \param type     The record content type to configure.
- * \param split    This parameter indicates whether content of type
+ * \param pausing  This parameter indicates whether content of type
  *                 \p type is allowed to be split across multiple records
  *                 (value #MPS_L2_SPLIT_ENABLED) or not
  *                 (value #MPS_L2_SPLIT_DISABLED).
@@ -1193,7 +1209,7 @@ MBEDTLS_MPS_PUBLIC int mps_l2_free( mbedtls_mps_l2 *ctx );
  *                 while in TLS 1.3 alert messages must not be split.
  *                 See the documentation of the \c pause_flag
  *                 member of ::mps_l2_config for more information.
- * \param pack     This parameter indicates whether successive read/write
+ * \param merging  This parameter indicates whether successive read/write
  *                 requests for content type \p type is allowed to be served
  *                 from the same record (value #MPS_L2_PACK_ENABLED) or not
  *                 (value #MPS_L2_PACK_DISABLED).
@@ -1213,22 +1229,6 @@ MBEDTLS_MPS_PUBLIC int mps_l2_free( mbedtls_mps_l2 *ctx );
  * \return         A negative error code on failure.
  *
  */
-typedef uint8_t mbedtls_mps_record_split_config_t;
-#define MBEDTLS_MPS_SPLIT_DISABLED ( (mbedtls_mps_record_split_config_t) 0 )
-#define MBEDTLS_MPS_SPLIT_ENABLED  ( (mbedtls_mps_record_split_config_t) 1 )
-
-typedef uint8_t mbedtls_mps_record_pack_config_t;
-#define MBEDTLS_MPS_PACK_DISABLED  ( (mbedtls_mps_record_pack_config_t) 0 )
-#define MBEDTLS_MPS_PACK_ENABLED   ( (mbedtls_mps_record_pack_config_t) 1 )
-
-typedef uint8_t mbedtls_mps_record_empty_config_t;
-#define MBEDTLS_MPS_EMPTY_FORBIDDEN ( (mbedtls_mps_record_empty_config_t) 0 )
-#define MBEDTLS_MPS_EMPTY_ALLOWED   ( (mbedtls_mps_record_empty_config_t) 1 )
-
-/*@
-  MPS_L2_INV_REQUIRES( ctx )
-  MPS_L2_INV_ENSURES( ctx )
-@*/
 static inline int mps_l2_config_add_type( mbedtls_mps_l2 *ctx,
                                     mbedtls_mps_msg_type_t type,
                                     mbedtls_mps_record_split_config_t pausing,
