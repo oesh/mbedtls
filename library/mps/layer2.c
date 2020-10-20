@@ -1519,7 +1519,10 @@ int mps_l2_read_done( mbedtls_mps_l2 *ctx )
      */
 
     active = mps_l2_readers_get_active( ctx );
-    ret = mbedtls_reader_reclaim( &active->rd, paused_ptr );
+    // TODO: `mbedtls_reader_reclaim`'s second argument is `size_t *`:
+    //  1. passing const ptr ot function that can move the ptr
+    //  2. `size_t` vs. `mbedtls_mps_size_t`
+    ret = mbedtls_reader_reclaim( &active->rd, (size_t *)paused_ptr );
     if( ret == MBEDTLS_ERR_READER_DATA_LEFT )
     {
         /* 1a */
