@@ -69,6 +69,10 @@
 #include "psa/crypto.h"
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+#include "mbedtls/mps/reader.h"
+#endif
+
 /*
  * SSL Error codes
  */
@@ -1240,6 +1244,10 @@ struct mbedtls_ssl_context
     int keep_current_message;   /*!< drop or reuse current message
                                      on next call to record layer? */
 
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+    mbedtls_reader *hs_reader;  /*!< MPS reader for consuming HS messages */
+    size_t hs_reader_paused;    /*!< Is the MPS reader paused? */
+#endif
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
     uint8_t disable_datagram_packing;  /*!< Disable packing multiple records
                                         *   within a single datagram.  */

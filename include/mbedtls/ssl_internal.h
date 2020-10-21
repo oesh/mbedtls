@@ -1188,4 +1188,19 @@ void mbedtls_ssl_buffering_free( mbedtls_ssl_context *ssl );
 void mbedtls_ssl_flight_free( mbedtls_ssl_flight_item *flight );
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
 
+
+static inline int mbedtls_ssl_hs_reassembly_enabled( const mbedtls_ssl_context *ssl )
+{
+#if defined(MBEDTLS_SSL_PROTO_DTLS)
+    if( ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM )
+        return( 0 );
+    else
+#endif /* MBEDTLS_SSL_PROTO_DTLS */
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+    if( ssl->hs_reader )
+        return( 1 );
+#endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
+    return( 0 );
+}
+
 #endif /* ssl_internal.h */

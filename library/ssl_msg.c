@@ -2975,6 +2975,46 @@ static uint32_t ssl_get_hs_total_len( mbedtls_ssl_context const *ssl )
 
 int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
 {
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+    {
+        int ret, hslen;
+
+        /* Attempt to read the header of the next handshake message from the reader */
+        ret = mbedtls_reader_get(
+            ssl->hs_reader, mbedtls_ssl_hs_hdr_len( ssl ), &ssl->in_msg, NULL );
+
+        if( ret != 0 )
+        {
+            /* Not enough data in the reader to consume the header */
+            mbedtls_ssl_update_in_pointers( ssl );
+            return( MBEDTLS_ERR_SSL_CONTINUE_PROCESSING );
+        }
+
+        hslen = mbedtls_ssl_hs_hdr_len( ssl ) + ssl_get_hs_total_len( ssl );
+
+        /* Attempt to read the body of the next handshake message from the reader */
+        ret = mbedtls_reader_get( ssl->hs_reader, hslen, &ssl->in_msg, NULL );
+
+        if( ret != 0 )
+        {
+            /* Not enough data in the reader to consume the header + message */
+            ssl->in_hslen = 0;
+            mbedtls_ssl_update_in_pointers( ssl );
+            return( MBEDTLS_ERR_SSL_CONTINUE_PROCESSING );
+        }
+
+        /*
+         * Update `ssl->in_hslen` to indicate that `ssl->in_msg` contains
+         * the entire handshake message
+         */
+        ssl->in_hslen = hslen;
+
+        /*
+         * NOTE: `ssl->in_msg` points to the buffer owned by ssl->hs_reader.
+         */
+        return( ret );
+    }
+#else /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
     if( ssl->in_msglen < mbedtls_ssl_hs_hdr_len( ssl ) )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "handshake message too short: %d",
@@ -3063,6 +3103,7 @@ int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
     }
 
     return( 0 );
+#endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
 }
 
 void mbedtls_ssl_update_handshake_status( mbedtls_ssl_context *ssl )
@@ -3904,6 +3945,19 @@ int mbedtls_ssl_read_record( mbedtls_ssl_context *ssl,
                         MBEDTLS_SSL_DEBUG_RET( 1, ( "ssl_get_next_record" ), ret );
                         return( ret );
                     }
+
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+                    if( ssl->in_msgtype == MBEDTLS_SSL_MSG_HANDSHAKE )
+                    {
+                        ret = mbedtls_reader_feed( ssl->hs_reader, ssl->in_msg, ssl->in_msglen );
+
+                        if( ret != 0 )
+                        {
+                            MBEDTLS_SSL_DEBUG_RET( 1, ( "mbedtls_reader_feed" ), ret );
+                            return( ret );
+                        }
+                    }
+#endif
                 }
             }
 
@@ -4327,7 +4381,34 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
         /*
          * Get next Handshake message in the current record
          */
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+        /**
+         * MPS reader allows handshake messages longer than
+         * records.
+         *
+         */
+        {
+            int ret;
 
+            if( ( ret = mbedtls_reader_commit( ssl->hs_reader ) ) != 0 )
+            {
+                MBEDTLS_SSL_DEBUG_MSG( 1, ( "should never happen" ) );
+                return( MBEDTLS_ERR_SSL_INTERNAL_ERROR );
+            }
+
+            /*
+             * Check whether the reader can reclaim its memory.
+             * This depends on the mbedtls_reader_commit have been invoked by the parsing code.
+             */
+            if( ( ret = mbedtls_reader_reclaim( ssl->hs_reader, &ssl->hs_reader_paused ) == 0 ) )
+            {
+                ssl->in_hslen = 0;
+            }
+
+            /* The input pointers might have been reset to the reader's buffers. */
+            mbedtls_ssl_update_in_pointers( ssl );
+        }
+#else /* !MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
         /* Notes:
          * (1) in_hslen is not necessarily the size of the
          *     current handshake content: If DTLS handshake
@@ -4360,6 +4441,7 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
         }
 
         ssl->in_hslen   = 0;
+#endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
     }
     /* Case (4): Application data */
     else if( ssl->in_offt != NULL )
@@ -4377,6 +4459,16 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
 
 static int ssl_record_is_in_progress( mbedtls_ssl_context *ssl )
 {
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+    if( mbedtls_ssl_hs_reassembly_enabled( ssl ) )
+    {
+        if( ssl->hs_reader->pending > 0 )
+        {
+            return( 1 );
+        }
+    }
+    else
+#endif
     if( ssl->in_msglen > 0 )
         return( 1 );
 
