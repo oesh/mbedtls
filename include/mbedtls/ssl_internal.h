@@ -1188,4 +1188,10 @@ void mbedtls_ssl_buffering_free( mbedtls_ssl_context *ssl );
 void mbedtls_ssl_flight_free( mbedtls_ssl_flight_item *flight );
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
 
+/* Returns pointer to (possibly reassembled) handshake message */
+static inline const unsigned char* mbedtls_ssl_hs_msg_ptr( const mbedtls_ssl_context *ssl )
+{
+    return ssl->in_msg;
+}
+
 #endif /* ssl_internal.h */

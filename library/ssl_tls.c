@@ -2200,7 +2200,7 @@ write_msg:
 
 #if defined(MBEDTLS_SSL_KEEP_PEER_CERTIFICATE)
 static int ssl_check_peer_crt_unchanged( mbedtls_ssl_context *ssl,
-                                         unsigned char *crt_buf,
+                                         const unsigned char *crt_buf,
                                          size_t crt_buf_len )
 {
     mbedtls_x509_crt const * const peer_crt = ssl->session->peer_cert;
@@ -2215,7 +2215,7 @@ static int ssl_check_peer_crt_unchanged( mbedtls_ssl_context *ssl,
 }
 #else /* MBEDTLS_SSL_KEEP_PEER_CERTIFICATE */
 static int ssl_check_peer_crt_unchanged( mbedtls_ssl_context *ssl,
-                                         unsigned char *crt_buf,
+                                         const unsigned char *crt_buf,
                                          size_t crt_buf_len )
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
@@ -2258,6 +2258,8 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
     size_t i, n;
     uint8_t alert;
 
+    const unsigned char *hs_msg;
+
     if( ssl->in_msgtype != MBEDTLS_SSL_MSG_HANDSHAKE )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
@@ -2266,7 +2268,9 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
         return( MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE );
     }
 
-    if( ssl->in_msg[0] != MBEDTLS_SSL_HS_CERTIFICATE ||
+    hs_msg = mbedtls_ssl_hs_msg_ptr( ssl );
+
+    if( hs_msg[0] != MBEDTLS_SSL_HS_CERTIFICATE ||
         ssl->in_hslen < mbedtls_ssl_hs_hdr_len( ssl ) + 3 + 3 )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
@@ -2280,9 +2284,9 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
     /*
      * Same message structure as in mbedtls_ssl_write_certificate()
      */
-    n = ( ssl->in_msg[i+1] << 8 ) | ssl->in_msg[i+2];
+    n = ( hs_msg[i+1] << 8 ) | hs_msg[i+2];
 
-    if( ssl->in_msg[i] != 0 ||
+    if( hs_msg[i] != 0 ||
         ssl->in_hslen != n + 3 + mbedtls_ssl_hs_hdr_len( ssl ) )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
@@ -2291,7 +2295,7 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
         return( MBEDTLS_ERR_SSL_BAD_HS_CERTIFICATE );
     }
 
-    /* Make &ssl->in_msg[i] point to the beginning of the CRT chain. */
+    /* Make &hs_msg[i] point to the beginning of the CRT chain. */
     i += 3;
 
     /* Iterate through and parse the CRTs in the provided chain. */
@@ -2307,7 +2311,7 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
         }
         /* In theory, the CRT can be up to 2**24 Bytes, but we don't support
          * anything beyond 2**16 ~ 64K. */
-        if( ssl->in_msg[i] != 0 )
+        if( hs_msg[i] != 0 )
         {
             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
             mbedtls_ssl_send_alert_message( ssl,
@@ -2317,8 +2321,8 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
         }
 
         /* Read length of the next CRT in the chain. */
-        n = ( (unsigned int) ssl->in_msg[i + 1] << 8 )
-            | (unsigned int) ssl->in_msg[i + 2];
+        n = ( (unsigned int) hs_msg[i + 1] << 8 )
+            | (unsigned int) hs_msg[i + 2];
         i += 3;
 
         if( n < 128 || i + n > ssl->in_hslen )
@@ -2342,7 +2346,7 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
              * the original end-CRT instead of parsing it again. */
             MBEDTLS_SSL_DEBUG_MSG( 3, ( "Check that peer CRT hasn't changed during renegotiation" ) );
             if( ssl_check_peer_crt_unchanged( ssl,
-                                              &ssl->in_msg[i],
+                                              &hs_msg[i],
                                               n ) != 0 )
             {
                 MBEDTLS_SSL_DEBUG_MSG( 1, ( "new server cert during renegotiation" ) );
@@ -2359,11 +2363,11 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
 
         /* Parse the next certificate in the chain. */
 #if defined(MBEDTLS_SSL_KEEP_PEER_CERTIFICATE)
-        ret = mbedtls_x509_crt_parse_der( chain, ssl->in_msg + i, n );
+        ret = mbedtls_x509_crt_parse_der( chain, hs_msg + i, n );
 #else
         /* If we don't need to store the CRT chain permanently, parse
          * it in-place from the input buffer instead of making a copy. */
-        ret = mbedtls_x509_crt_parse_der_nocopy( chain, ssl->in_msg + i, n );
+        ret = mbedtls_x509_crt_parse_der_nocopy( chain, hs_msg + i, n );
 #endif /* MBEDTLS_SSL_KEEP_PEER_CERTIFICATE */
         switch( ret )
         {
@@ -2399,8 +2403,12 @@ static int ssl_parse_certificate_chain( mbedtls_ssl_context *ssl,
 #if defined(MBEDTLS_SSL_SRV_C)
 static int ssl_srv_check_client_no_crt_notification( mbedtls_ssl_context *ssl )
 {
+    const unsigned char *hs_msg;
+
     if( ssl->conf->endpoint == MBEDTLS_SSL_IS_CLIENT )
         return( -1 );
+
+    hs_msg = mbedtls_ssl_hs_msg_ptr( ssl );
 
 #if defined(MBEDTLS_SSL_PROTO_SSL3)
     /*
@@ -2410,8 +2418,8 @@ static int ssl_srv_check_client_no_crt_notification( mbedtls_ssl_context *ssl )
     {
         if( ssl->in_msglen  == 2                        &&
             ssl->in_msgtype == MBEDTLS_SSL_MSG_ALERT            &&
-            ssl->in_msg[0]  == MBEDTLS_SSL_ALERT_LEVEL_WARNING  &&
-            ssl->in_msg[1]  == MBEDTLS_SSL_ALERT_MSG_NO_CERT )
+            hs_msg[0]  == MBEDTLS_SSL_ALERT_LEVEL_WARNING  &&
+            hs_msg[1]  == MBEDTLS_SSL_ALERT_MSG_NO_CERT )
         {
             MBEDTLS_SSL_DEBUG_MSG( 1, ( "SSLv3 client has no certificate" ) );
             return( 0 );
@@ -2425,8 +2433,8 @@ static int ssl_srv_check_client_no_crt_notification( mbedtls_ssl_context *ssl )
     defined(MBEDTLS_SSL_PROTO_TLS1_2)
     if( ssl->in_hslen   == 3 + mbedtls_ssl_hs_hdr_len( ssl ) &&
         ssl->in_msgtype == MBEDTLS_SSL_MSG_HANDSHAKE    &&
-        ssl->in_msg[0]  == MBEDTLS_SSL_HS_CERTIFICATE   &&
-        memcmp( ssl->in_msg + mbedtls_ssl_hs_hdr_len( ssl ), "\0\0\0", 3 ) == 0 )
+        hs_msg[0]  == MBEDTLS_SSL_HS_CERTIFICATE   &&
+        memcmp( hs_msg + mbedtls_ssl_hs_hdr_len( ssl ), "\0\0\0", 3 ) == 0 )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "TLSv1 client has no certificate" ) );
         return( 0 );
@@ -3496,6 +3504,8 @@ int mbedtls_ssl_parse_finished( mbedtls_ssl_context *ssl )
     unsigned int hash_len;
     unsigned char buf[SSL_MAX_HASH_LEN];
 
+    const unsigned char *hs_msg;
+
     MBEDTLS_SSL_DEBUG_MSG( 2, ( "=> parse finished" ) );
 
     ssl->handshake->calc_finished( ssl, buf, ssl->conf->endpoint ^ 1 );
@@ -3505,6 +3515,8 @@ int mbedtls_ssl_parse_finished( mbedtls_ssl_context *ssl )
         MBEDTLS_SSL_DEBUG_RET( 1, "mbedtls_ssl_read_record", ret );
         return( ret );
     }
+
+    hs_msg = mbedtls_ssl_hs_msg_ptr( ssl );
 
     if( ssl->in_msgtype != MBEDTLS_SSL_MSG_HANDSHAKE )
     {
@@ -3522,7 +3534,7 @@ int mbedtls_ssl_parse_finished( mbedtls_ssl_context *ssl )
 #endif
         hash_len = 12;
 
-    if( ssl->in_msg[0] != MBEDTLS_SSL_HS_FINISHED ||
+    if( hs_msg[0] != MBEDTLS_SSL_HS_FINISHED ||
         ssl->in_hslen  != mbedtls_ssl_hs_hdr_len( ssl ) + hash_len )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad finished message" ) );
@@ -3531,7 +3543,7 @@ int mbedtls_ssl_parse_finished( mbedtls_ssl_context *ssl )
         return( MBEDTLS_ERR_SSL_BAD_HS_FINISHED );
     }
 
-    if( mbedtls_ssl_safer_memcmp( ssl->in_msg + mbedtls_ssl_hs_hdr_len( ssl ),
+    if( mbedtls_ssl_safer_memcmp( hs_msg + mbedtls_ssl_hs_hdr_len( ssl ),
                       buf, hash_len ) != 0 )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad finished message" ) );
