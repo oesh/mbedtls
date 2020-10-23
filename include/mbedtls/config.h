@@ -1656,6 +1656,16 @@
 #define MBEDTLS_SSL_MAX_FRAGMENT_LENGTH
 
 /**
+ * \def MBEDTLS_SSL_HANDSHAKE_REASSEMBLY
+ *
+ * Enables support for TLS handshake reassembly.
+ *
+ * Requires: MBEDTLS_MPS_READER_C
+ *
+ */
+#define MBEDTLS_SSL_HANDSHAKE_REASSEMBLY
+
+/**
  * \def MBEDTLS_SSL_PROTO_SSL3
  *
  * Enable support for SSL 3.0.

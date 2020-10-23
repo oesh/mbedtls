@@ -2968,13 +2968,44 @@ static size_t ssl_get_reassembly_buffer_size( size_t msg_len,
 
 static uint32_t ssl_get_hs_total_len( mbedtls_ssl_context const *ssl )
 {
-    return( ( ssl->in_msg[1] << 16 ) |
-            ( ssl->in_msg[2] << 8  ) |
-              ssl->in_msg[3] );
+    const unsigned char *hs_msg = mbedtls_ssl_hs_msg_ptr( ssl );
+    return( ( hs_msg[1] << 16 ) |
+            ( hs_msg[2] << 8  ) |
+              hs_msg[3] );
 }
 
 int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
 {
+    const unsigned char *hs_msg;
+
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+    if( mbedtls_ssl_hs_reassembly_enabled( ssl ) )
+    {
+        int ret;
+        mbedtls_mps_size_t actual;
+        unsigned char **hs_msg_ptr = &ssl->hs_reassembly.hs_msg;
+
+        /* Attempt to read the header of the next handshake message from the reader */
+        ret = mbedtls_reader_get(
+                ssl->hs_reassembly.reader, mbedtls_ssl_hs_hdr_len( ssl ), hs_msg_ptr, &actual );
+
+        if( ret == MBEDTLS_ERR_READER_OUT_OF_DATA )
+        {
+           /* Not enough data to read the handshake header */
+            MBEDTLS_SSL_DEBUG_MSG( 1, (
+                        "Handshake reader needs more data: desired: %d actual: %d",
+                        mbedtls_ssl_hs_hdr_len( ssl ), actual ) );
+            return( MBEDTLS_ERR_SSL_WANT_READ );
+        }
+        else if( ret != 0 )
+        {
+            MBEDTLS_SSL_DEBUG_RET( 2, "mbedtls_reader_get", ret );
+            /* Propagate the generic error to the caller */
+            return( ret );
+        }
+    }
+    else
+#endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
     if( ssl->in_msglen < mbedtls_ssl_hs_hdr_len( ssl ) )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "handshake message too short: %d",
@@ -2982,11 +3013,12 @@ int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
         return( MBEDTLS_ERR_SSL_INVALID_RECORD );
     }
 
+    hs_msg = mbedtls_ssl_hs_msg_ptr( ssl );
     ssl->in_hslen = mbedtls_ssl_hs_hdr_len( ssl ) + ssl_get_hs_total_len( ssl );
 
     MBEDTLS_SSL_DEBUG_MSG( 3, ( "handshake message: msglen ="
                         " %d, type = %d, hslen = %d",
-                        ssl->in_msglen, ssl->in_msg[0], ssl->in_hslen ) );
+                        ssl->in_msglen, hs_msg[0], ssl->in_hslen ) );
 
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
     if( ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM )
@@ -3055,10 +3087,39 @@ int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
     }
     else
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
-    /* With TLS we don't handle fragmentation (for now) */
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+    if( mbedtls_ssl_hs_reassembly_enabled( ssl ) )
+    {
+        int ret;
+        mbedtls_mps_size_t actual;
+        unsigned char **hs_msg_ptr = &ssl->hs_reassembly.hs_msg;
+
+        /* Attempt to read the header of the next handshake message from the reader */
+        ret = mbedtls_reader_get(
+                ssl->hs_reassembly.reader, ssl->in_hslen, hs_msg_ptr, &actual );
+
+        if( ret == MBEDTLS_ERR_READER_OUT_OF_DATA )
+        {
+            /* Not enough data to read the handshake header */
+            MBEDTLS_SSL_DEBUG_MSG( 1, (
+                        "Handshake reader needs more data: desired: %d actual: %d",
+                        ssl->in_hslen, actual ) );
+            return( MBEDTLS_ERR_SSL_WANT_READ );
+        }
+        else if( ret != 0 )
+        {
+            /* Propagate the generic error to the caller */
+            MBEDTLS_SSL_DEBUG_RET( 2, "mbedtls_reader_get", ret );
+            return( ret );
+        }
+
+        ssl->hs_reassembly.flags.complete = 0x1 & ( ssl->in_hslen == actual );
+    }
+    else
+    #endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
     if( ssl->in_msglen < ssl->in_hslen )
     {
-        MBEDTLS_SSL_DEBUG_MSG( 1, ( "TLS handshake fragmentation not supported" ) );
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "TLS handshake fragmentation not enabled" ) );
         return( MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE );
     }
 
@@ -3904,6 +3965,25 @@ int mbedtls_ssl_read_record( mbedtls_ssl_context *ssl,
                         MBEDTLS_SSL_DEBUG_RET( 1, ( "ssl_get_next_record" ), ret );
                         return( ret );
                     }
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+                    if( ( mbedtls_ssl_hs_reassembly_enabled( ssl ) ) &&
+                            ( ssl->in_msgtype == MBEDTLS_SSL_MSG_HANDSHAKE ) )
+                    {
+                        ret = mbedtls_reader_feed(
+                                ssl->hs_reassembly.reader, ssl->in_msg, ssl->in_msglen );
+
+                        if( ret == MBEDTLS_ERR_READER_NEED_MORE )
+                        {
+                            MBEDTLS_SSL_DEBUG_MSG( 2, ( "Reader needs more data" ) );
+                            continue;
+                        }
+                        else if( ret != 0 )
+                        {
+                            MBEDTLS_SSL_DEBUG_RET( 1, ( "mbedtls_reader_feed" ), ret );
+                            return( ret );
+                        }
+                    }
+    #endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
                 }
             }
 
@@ -4324,6 +4404,52 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
             return( MBEDTLS_ERR_SSL_INTERNAL_ERROR );
         }
 
+
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+        /*
+         * Commit / reclaim buffers in the reassembly reader
+         */
+        if( mbedtls_ssl_hs_reassembly_enabled( ssl ) )
+        {
+            int ret;
+            mbedtls_mps_size_t paused;
+
+            if( ssl->hs_reassembly.flags.complete )
+            {
+                ret = mbedtls_reader_commit( ssl->hs_reassembly.reader );
+
+                if( ret != 0 )
+                {
+                    MBEDTLS_SSL_DEBUG_MSG( 1, ( "should never happen" ) );
+                    return( MBEDTLS_ERR_SSL_INTERNAL_ERROR );
+                }
+
+                ssl->hs_reassembly.flags.complete = 0x0;
+            }
+
+            /*
+             * Check whether the reader can reclaim its memory.
+             * This depends on the mbedtls_reader_commit have been invoked by
+             * the parsing code.
+             */
+            ret = mbedtls_reader_reclaim( ssl->hs_reassembly.reader, &paused );
+            ssl->hs_reassembly.flags.paused = paused & 0x1;
+            if( ret == 0 )
+            {
+                ssl->in_hslen = 0;
+                ssl->in_msglen = 0;
+            }
+
+            /*
+             * TODO: need to be able to identify the case when
+             * the reader depends on the `ssl->in_msg`.
+             * For now this is unlikely to happen since we are
+             * setting the accumulator to be large enough for
+             * the trailing data.
+             */
+        }
+        else
+#endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
         /*
          * Get next Handshake message in the current record
          */
@@ -4377,6 +4503,12 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
 
 static int ssl_record_is_in_progress( mbedtls_ssl_context *ssl )
 {
+    /*
+     * If reassembly is being used, buffers are fully consumed
+     * by the reader, leaving no record in progress
+     */
+    if( mbedtls_ssl_hs_reassembly_enabled( ssl ) )
+        return( 0 );
     if( ssl->in_msglen > 0 )
         return( 1 );
 

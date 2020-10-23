@@ -1194,4 +1194,15 @@ static inline const unsigned char* mbedtls_ssl_hs_msg_ptr( const mbedtls_ssl_con
     return ssl->in_msg;
 }
 
+static inline int mbedtls_ssl_hs_reassembly_enabled( const mbedtls_ssl_context *ssl )
+{
+#if defined(MBEDTLS_SSL_HANDSHAKE_REASSEMBLY)
+    if( ( 0 < ssl->hs_reassembly.acc_size ) &&
+            ( ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_STREAM ) )
+        return( 1 );
+    else
+#endif /* MBEDTLS_SSL_HANDSHAKE_REASSEMBLY */
+    return( 0 );
+}
+
 #endif /* ssl_internal.h */
